@@ -1,0 +1,10 @@
+===( 4.3 )==================================================================================
+-Matinhos procedurais gerados no mapa
+-Textura do chão reimaginada
+-Chão infinito
+
+===( 4.4 )==================================================================================
+-O personagem dá dash
+-O dash tem cooldown (90t)
+-O ataque tem cooldown também (60t)
+
