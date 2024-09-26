@@ -19,4 +19,6 @@ https://www.pygame.org/docs/
 
 Também utilizei de várias páginas no github, para auxiliar na correção de bugs
 
+Utilizei do website https://math.stackexchange.com/ para ajuda com a parte matemática do projeto
+
 Outro fator foi a utilziação da ferramenta ChatGPT, agindo como um copiloto da programação.
