@@ -12,12 +12,18 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("NightFall V" + UPDATE + ": " + UPDNAME)
 clock = pygame.time.Clock()
 
+Debuggin = False
 
 background = pygame.image.load("backgrounds/backgroundA.png").convert()
 backgroundb = pygame.image.load("backgrounds/BG_tile.png").convert()
 background_upscale = pygame.transform.scale(backgroundb, (64,64))
 
 camera = pygame.math.Vector2( 0,0 )
+
+
+bossbarImage = pygame.transform.scale(pygame.image.load("UI\BossBarFrame.png"), (1272,56))
+
+HPheart = pygame.transform.scale(pygame.image.load("UI\HP_heart.png"), (64,64))
 
 # DEFINIÇÕES MATEMÁTICAS ========================================================================================================
 
@@ -26,6 +32,9 @@ def lerp(start, end, t):
 
 def axialise(binaryValue):
     return (binaryValue+1)*2-3
+
+def toggle(variable):
+    return not variable
 
 # DEFINIÇÕES PERSONAGENS ========================================================================================================
 
@@ -55,7 +64,7 @@ class Player1(pygame.sprite.Sprite):
 
         # PlayerVars
         self.maxspeed = 7 
-        self.health = 100
+        self.health = 5
 
         #Dashes
         self.dashPowah = 5
@@ -191,8 +200,13 @@ class Player1(pygame.sprite.Sprite):
         self.appliedvector[1] += self.movevector[1] * self.dashPowah
     
     def scrollto(self):
-        camera.x = lerp(camera.x, (self.pos.x*2 + boss1.pos.x)/3 - WIDTH/2   , 0.05) 
-        camera.y = lerp(camera.y, (self.pos.y*2 + boss1.pos.y)/3 - HEIGHT/2  , 0.05)
+        camera.x = lerp(camera.x, (self.pos.x + boss1.pos.x)/2 - WIDTH/2   , 0.05) 
+        camera.y = lerp(camera.y, (self.pos.y + boss1.pos.y)/2 - HEIGHT/2  , 0.05)
+
+    def takedamage(self, damage, knockstrength, knockangle):
+        self.appliedvector[0] = math.cos(knockangle) * knockstrength
+        self.appliedvector[1] = math.sin(knockangle) * knockstrength
+        self.health -= damage
         
     def update(self):
         self.animate()     
@@ -219,24 +233,35 @@ class Boss_1(pygame.sprite.Sprite):
         self.image = pygame.transform.scale(self.imageraw, (self.imageraw.get_width() * 4, self.imageraw.get_height() * 4))
 
         # Movement_things
-        self.pos = pygame.math.Vector2(X_PSTART, Y_PSTART)
+        self.pos = pygame.math.Vector2(WIDTH, HEIGHT)
         self.drawpos = pygame.math.Vector2(self.pos.x - self.image.get_width()/2 - camera.x, self.pos.y - self.image.get_height() - camera.y)
+        self.drawoffset = pygame.Vector2(0, 64)
         self.movevector = pygame.math.Vector2(0, 0)
         self.maxspeed = 5
         self.targ = pygame.math.Vector2(0,0)
         self.moveangle = 0
-        self.movetype = "lock"
+        self.orbitdist = 300
+        self.movetype = "approach"
+        self.orbitangle = 0
 
         # Hitbox Defining
-        self.hitbox_size = pygame.math.Vector2(96,8)
+        self.hitbox_size = pygame.math.Vector2(128,128)
 
         # HEalth Points
         self.HP = 100
+        self.HP_max = 100
         self.iFrames = 30
+        self.lastcombo = 0
+
+        #Melee damage
+        self.attackrad = 55
+        self.attackcenteroffset = pygame.Vector2(0,0)
 
         #Spittin
-        self.shoot_timer = 0
-        self.shoot_interval = 60  # Time between shots in frames
+        self.shoot_timer = 30
+        self.shoot_interval = 10  # Time between shots in frames
+
+        self.localtimer = 0
 
     def animate(self):
         self.frametimer = self.frametimer + 1
@@ -259,36 +284,103 @@ class Boss_1(pygame.sprite.Sprite):
             
     def move(self):
         self.pos += self.movevector
-        self.drawpos = pygame.math.Vector2(self.pos.x - self.image.get_width()/2 - camera.x, self.pos.y + 24 - self.image.get_height() - camera.y)
+        self.drawpos = pygame.math.Vector2(self.pos.x - self.image.get_width()/2 - camera.x, self.pos.y + 24 - self.image.get_height() - camera.y) + self.drawoffset
         self.rect = pygame.Rect(self.pos.x - self.hitbox_size.x/2 , self.pos.y - self.hitbox_size.y/2, self.hitbox_size.x, self.hitbox_size.y)
 
-        if self.movetype == "lock":
-            self.targ = player1.pos
-
-            self.maxspeed = (math.sqrt((self.pos.x - self.targ.x)**2 + (self.pos.y - self.targ.y)**2) - 300) /14
+        if self.movetype == "lock shoot":
+            self.maxspeed = (math.sqrt((self.pos.x - self.targ.x)**2 + (self.pos.y - self.targ.y)**2) - self.orbitdist) /14
             #definir velocidade de acordo com a distância de A a B
 
             self.moveangle = math.atan2(self.targ.y - self.pos.y, self.targ.x - self.pos.x)
             self.movevector = pygame.math.Vector2(math.cos(self.moveangle) * self.maxspeed, math.sin(self.moveangle) * self.maxspeed)
             self.targx = player1.pos.x
+            
             self.lookat()
+            self.shoot()
+
+            self.localtimer += 1
+            if self.localtimer > 180:
+                self.localtimer = 0
+                self.movetype = "approach"
+            
+        if self.movetype == "spin shoot":
+            self.maxspeed = (math.sqrt((self.pos.x - self.targ.x)**2 + (self.pos.y - self.targ.y)**2)) /14
+            #definir velocidade de acordo com a distância de A a B
+
+            self.moveangle = math.atan2(self.targ.y - self.pos.y, self.targ.x - self.pos.x)
+            self.movevector = pygame.math.Vector2(math.cos(self.moveangle) * self.maxspeed, math.sin(self.moveangle) * self.maxspeed)
+            self.targ = player1.pos + pygame.Vector2(math.cos(self.orbitangle),math.sin(self.orbitangle)) * self.orbitdist * 1.25
+            self.orbitangle += 0.033
+            
+            self.lookat()
+            self.shoot()
+
+            self.localtimer += 1
+            if self.localtimer > 180:
+                self.localtimer = 0
+                self.movetype = "approach"
+
+        if self.movetype == "approach":
+            self.targ = player1.pos
+            self.maxspeed = (math.sqrt((self.pos.x - self.targ.x)**2 + (self.pos.y - self.targ.y)**2) - self.orbitdist) /14 - 5
+            #definir velocidade de acordo com a distância de A a B
+
+            self.moveangle = math.atan2(self.targ.y - self.pos.y, self.targ.x - self.pos.x)
+            self.movevector = pygame.math.Vector2(math.cos(self.moveangle) * self.maxspeed, math.sin(self.moveangle) * self.maxspeed)
+            self.targx = player1.pos.x
+
+            if self.orbitdist > 10:
+                self.orbitdist -= 5
+                
+            
+            self.lookat()
+        
+        if self.movetype == "bite":
+
+
+
+
+            self.lookat()
+
+    def changetype(self, newtype):
+        self.movetype = newtype
+
+        if newtype == "approach":
+            self.orbitdist = 500
 
     def upd_visual(self):
         self.image = pygame.transform.flip(pygame.transform.scale(self.imageraw, (self.imageraw.get_width() * 4, self.imageraw.get_height() * 4)), not self.mirror, False)
     
     def checkfor_damage(self, damagex, damagey, damagerad):
-        if math.sqrt((self.pos.x - damagex)**2 + (self.pos.y - damagey)**2) < damagerad and self.iFrames == 0:
+        circle = (damagex, damagey, damagerad)
+        rectangle = (self.pos.x - self.hitbox_size.x/2, self.pos.y - self.hitbox_size.y/2, self.hitbox_size.x, self.hitbox_size.y)
+        if is_circle_rect_overlap(circle, rectangle):
+            self.takeDamage(3)
             self.iFrames = 30
-            self.takeDamage(20)
+            
 
     def update_HP(self):
         if self.iFrames > 0:
             self.iFrames -= 1
     
     def takeDamage(self, damagetaken):
-        self.HP -= damagetaken
+        if self.iFrames == 0:
+            self.HP -= damagetaken
+            self.lastcombo += 1
+            if self.movetype == "approach":
+                self.orbitdist = 400
+                if self.lastcombo > 2:
+                    self.lastcombo = 0
+                    self.targ = self.pos + self.movevector*10
+                    self.shoot_timer = 45
+                    if self.HP < self.HP_max/2:
+                        self.movetype = "spin shoot"
+                    else:
+                        self.movetype = "lock shoot"
+        
 
     def shoot(self):
+        self.shoot_timer -= 1
         if self.shoot_timer <= 0:
             # Calculate projectile position and angle
             projectile_x = self.pos.x
@@ -297,7 +389,7 @@ class Boss_1(pygame.sprite.Sprite):
             
             # Create and add a new projectile to the projectiles group
             projectile = Proj_Spit(projectile_x, projectile_y)
-            projectile.moveangle = angle
+            projectile.moveangle = angle + random.randrange(-20,20)/10
             projectiles.add(projectile)
             
             # Reset shoot timer
@@ -310,8 +402,7 @@ class Boss_1(pygame.sprite.Sprite):
         self.update_HP()
         
         # Handle shooting
-        self.shoot_timer -= 1
-        self.shoot()
+
 
     def pathfindTo(self, pX, pY):
         dstA = 1
@@ -362,6 +453,9 @@ class Proj_Spit(pygame.sprite.Sprite):
 
         if self.lifetime < 90:
             self.check_target_side()
+        
+        if self.lifetime > 60*5:
+            self.kill()
 
 
     def check_target_side(self,):
@@ -373,7 +467,7 @@ class Proj_Spit(pygame.sprite.Sprite):
         
         self.moveangle += cross_product/5500
         
-        print(self.moveangle)
+        #print(self.moveangle)
 
 class Obstacle(pygame.sprite.Sprite):
     def __init__(self, x, y, width, height):
@@ -449,6 +543,29 @@ def handle_collision(sprite, obstacles):
         # Adjust player position
         sprite.pos = pygame.math.Vector2(sprite.rect.centerx, sprite.rect.centery)
 
+def is_circle_rect_overlap(circle, rect):
+    # Circle properties
+    C_x, C_y, r = circle  # Circle center (x, y) and radius
+
+    # Rectangle properties
+    rect_x, rect_y, rect_width, rect_height = rect  # Rect properties
+    rect = pygame.Rect(rect_x, rect_y, rect_width, rect_height)
+
+    # Find the closest point on the rectangle to the circle's center
+    closest_x = max(rect.left, min(C_x, rect.right))
+    closest_y = max(rect.top, min(C_y, rect.bottom))
+
+    # Calculate the distance from the closest point to the circle's center
+    distance_x = C_x - closest_x
+    distance_y = C_y - closest_y
+
+    # Calculate the square of the distance (to avoid square root)
+    distance_squared = distance_x**2 + distance_y**2
+
+    # Check if the distance is less than or equal to the radius squared
+    return distance_squared <= r**2
+
+
 # DORGANIZE OS SPRITESS ========================================================================================================
 
 def sort_sprites_by_y(sprites):
@@ -503,18 +620,66 @@ projectiles.add()
 font = pygame.font.Font(None, 36)
 
 # O QUE É UM SPRITE? EIS A QUESTÃO. ============================================================================================
-
+print("")
+print("")
+print("CONTROLES:")
+print("Para controlar seu personagem, use as teclas W,A,S,D. Para dar uma investida na direção do movimento, use a tecla CTRL, para atacar, use o botão SPACEBAR.")
+print("")
+print("")
 
 while True:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
             exit()
+    
+
+    if player1.health <= 0:
+        player1.pos = pygame.math.Vector2(X_PSTART, Y_PSTART)  # Reset position to start
+        player1.health = 5  # Reset health
+        player1.dashCooldown = 0  # Reset dash cooldown
+        player1.attackCooldown = 0  # Reset attack cooldown
+        player1.state = 0  # Set the player state back to normal movement
+        player1.animation = "idle"  # Reset animation state
+        player1.curframe = 0  # Reset animation frame
+        player1.frametimer = 0  # Reset animation timer
+        player1.movevector = pygame.math.Vector2(0, 0)  # Reset movement vector
+        player1.appliedvector = pygame.math.Vector2(0, 0)  # Reset applied vector for momentum
+        player1.mirror = False  # Reset mirrored state
+        boss1.pos = pygame.math.Vector2(WIDTH, HEIGHT)  # Reset position
+        boss1.HP = boss1.HP_max  # Reset health
+        boss1.iFrames = 0  # Reset invincibility frames
+        boss1.movetype = "approach"  # Reset movement type to default
+        boss1.orbitdist = 300  # Reset orbit distance
+        boss1.localtimer = 0  # Reset internal timers
+        boss1.lastcombo = 0  # Reset combo counter
+        boss1.targ = player1.pos  # Set boss target back to player
+        boss1.shoot_timer = 0  # Reset shooting timer
+        boss1.animation = "idle"  # Reset animation state
+        boss1.curframe = 0  # Reset animation frame
+        boss1.frametimer = 0  # Reset animation timer
+        projectiles.empty()  # Clear all projectiles from the group
+
+        #Reset other game variables (like score, timer, etc.)
+        score = 0  # Reset score
+        timer = 0  # Reset timer
+        camera.x = 0  # Reset camera position
+        camera.y = 0
+
+
+
+    keys = pygame.key.get_pressed()
+    if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_TAB:
+                Debuggin = True
+    if event.type == pygame.KEYUP:
+            if event.key == pygame.K_TAB:
+                Debuggin = False
 
     screen.blit(background, (-camera.x, -camera.y))
     
 
-    # Get the dimensions of the background tile
+    # Get the dimensions of the background 
     tile_width, tile_height = background_upscale.get_size()
 
 
@@ -546,10 +711,19 @@ while True:
     # Handle collisions
     handle_collision(player1, obstacles)
     handle_collision(boss1, obstacles)
-    handle_collision(player1, enemies)
+
+    collided_projectiles = check_collision(player1, projectiles)
+
+    # Remove collided projectiles
+    for projectile in collided_projectiles:
+        projectile.kill()
+        player1.takedamage(1,20,projectile.moveangle)
+
+
+
     # Draw everything
     # Collect all sprites to draw
-    all_sprites = [player1] + list(obstacles) + list(enemies) + list(decorations) + list(projectiles)
+    all_sprites = [player1] + list(obstacles) + list(enemies) + list(decorations) 
 
 
     # Sort sprites by their Y position (in descending order)
@@ -564,19 +738,12 @@ while True:
             screen.blit(sprite.image, sprite.drawpos)
 
 
-    # Draw obstacles first if you want them to be behind other sprites
-    #for obstacle in sorted_sprites:
-    #    if isinstance(obstacle, Obstacle):
-    #        screen.blit(obstacle.image, (obstacle.rect.x - camera.x, obstacle.rect.y - camera.y))
+    
 
+    for projectile in projectiles:
+        screen.blit(projectile.image, projectile.drawpos)
 
-    # Draw characters after obstacles
-    for sprite in sorted_sprites:
-        if not isinstance(sprite, Obstacle):
-            screen.blit(sprite.image, sprite.drawpos)
-
-
-    if DEBUGGIN == True:
+    if Debuggin == True:
         pygame.draw.rect(screen, (255, 0, 0), (player1.rect.x - camera.x, player1.rect.y - camera.y, player1.rect.width, player1.rect.height), 2)
         pygame.draw.rect(screen, (255, 0, 0), (boss1.rect.x - camera.x, boss1.rect.y - camera.y, boss1.rect.width, boss1.rect.height), 2)
         pygame.draw.rect(screen, (255, 0, 0), (player1.pos.x - camera.x - 4, player1.pos.y -4  - camera.y, 8, 8))
@@ -585,10 +752,31 @@ while True:
         if player1.state == 1:
             pygame.draw.circle(screen, (0, 255, 0), (player1.attackcenter.x - camera.x, player1.attackcenter.y - camera.y), player1.attackrad, 2)
         
-        pygame.draw.rect(screen, (255, 0, 255), ((player1.pos.x - player1.dashCooldown/2) - camera.x, (player1.pos.y + 8)  - camera.y, player1.dashCooldown, 8))
-        pygame.draw.rect(screen, (0, 255, 255), ((player1.pos.x - player1.attackCooldown/2) - camera.x, (player1.pos.y + 20)  - camera.y, player1.attackCooldown, 8))
+    pygame.draw.rect(screen, (255, 0, 255), ((player1.pos.x - player1.dashCooldown/2) - camera.x, (player1.pos.y + 8)  - camera.y, player1.dashCooldown, 8))
+    pygame.draw.rect(screen, (0, 255, 255), ((player1.pos.x - player1.attackCooldown/2) - camera.x, (player1.pos.y + 20)  - camera.y, player1.attackCooldown, 8))
 
-        pygame.draw.rect(screen, (255, 255, 255), (32, 32, boss1.HP * 12,64))
+
+    pygame.draw.rect(screen, (186, 50, 33), (32, 32, boss1.HP * (WIDTH-64)/boss1.HP_max , 28))
+    screen.blit(bossbarImage, (4,16))
+
+    if player1.health > 0:
+        screen.blit(HPheart, (WIDTH-64-32, HEIGHT-64-32))
+    
+    if player1.health > 1:
+        screen.blit(HPheart, (WIDTH-128-32, HEIGHT-64-32))
+    
+    if player1.health > 2:
+        screen.blit(HPheart, (WIDTH-192-32, HEIGHT-64-32))
+    
+    if player1.health > 3:
+        screen.blit(HPheart, (WIDTH-256-32, HEIGHT-64-32))
+    
+    if player1.health > 4:
+        screen.blit(HPheart, (WIDTH-320-32, HEIGHT-64-32))
+    
+    if boss1.HP <= 0:
+        boss1.kill()
+    
     
 
     pygame.display.update()
