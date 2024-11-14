@@ -3,10 +3,13 @@ HEIGHT = 720
 
 FPS = 60
 
-UPDATE = "4.5"
-UPDNAME = "sticky business"
+UPDATE = "5.0"
+UPDNAME = "Tough as nails"
 
 X_PSTART = WIDTH/2
 Y_PSTART = HEIGHT/2
 
 DEBUGGIN = False
+
+BOSSTART_X = WIDTH
+BOSSTART_Y = HEIGHT
