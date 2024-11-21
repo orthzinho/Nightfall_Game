@@ -1,5 +1,12 @@
 # Nightfall
 
+## INSTALAÇÃO
+Instale a extensão pygame.
+Baixe o código em ZIP
+Extraia tudo em uma pasta
+Abra a pasta no visual studio code
+Use o runtime do python para rodar o jogo!
+
 ## O que é?
 Você é colocado nos pés de um guerreiro de uma pequena aldeia. Certa noite, um clarão apareceu no céu, e em seguida, houve um grande terremoto.
 Depois dessa noite, os aldeões começaram a sentir uma presença constante, além de criaturas estranhas invadindo a vila, vindo da região do clarão.
