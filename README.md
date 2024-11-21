@@ -2,9 +2,13 @@
 
 ## INSTALAÇÃO
 Instale a extensão pygame.
+
 Baixe o código em ZIP
+
 Extraia tudo em uma pasta
+
 Abra a pasta no visual studio code
+
 Use o runtime do python para rodar o jogo!
 
 ## O que é?
